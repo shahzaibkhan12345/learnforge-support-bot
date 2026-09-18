@@ -53,6 +53,31 @@ Invoke-RestMethod http://127.0.0.1:8000/chat -Method Post -ContentType "applicat
 
 The first index build downloads the embedding model. The generated `.chroma/` directory is local runtime state and is ignored by Git.
 
+## Multi-turn Proof
+
+Conversation state is keyed by `session_id`. Send the first request:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/chat -Method Post -ContentType "application/json" -Body '{"session_id":"refund-demo","message":"I bought a course yesterday. Can I get a refund?"}'
+```
+
+Then send a follow-up with the same `session_id`:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/chat -Method Post -ContentType "application/json" -Body '{"session_id":"refund-demo","message":"What information should I include?"}'
+```
+
+The second request is not a new conversation. `ChatService` passes the first user message and generated answer to the generator before answering the follow-up. The automated proof is `test_session_history_is_forwarded_on_follow_up` in `tests/test_chat.py`; it verifies the first turn has zero history and the second turn receives the exact two-message history.
+
+Example generator observations:
+
+```text
+first turn:  history=[]
+second turn: history=[user: "I bought a course yesterday. Can I get a refund?", assistant: "..."]
+```
+
+Use a new `session_id` to start a separate conversation. History is intentionally in memory for this prototype and is lost when the API process restarts.
+
 ## Architecture
 
 ```mermaid

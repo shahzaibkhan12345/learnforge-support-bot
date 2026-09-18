@@ -9,17 +9,22 @@ from learnforge_support.retrieval import SearchResult
 @dataclass
 class FakeRetriever:
     results: list[SearchResult]
+    queries: list[str] | None = None
 
     def search(self, query: str, top_k: int | None = None) -> list[SearchResult]:
+        if self.queries is not None:
+            self.queries.append(query)
         return self.results
 
 
 class FakeGenerator:
     def __init__(self) -> None:
         self.history_lengths: list[int] = []
+        self.histories: list[list[dict[str, str]]] = []
 
     def answer(self, question: str, context: list[SearchResult], history: list[dict[str, str]]) -> str:
         self.history_lengths.append(len(history))
+        self.histories.append(list(history))
         return f"Grounded answer [FAQ-01] for: {question}"
 
 
@@ -58,7 +63,8 @@ def test_low_confidence_query_escalates_without_calling_generator() -> None:
 
 def test_session_history_is_forwarded_on_follow_up() -> None:
     generator = FakeGenerator()
-    service = ChatService(FakeRetriever([result(0.9)]), generator, Settings())
+    retriever = FakeRetriever([result(0.9)], queries=[])
+    service = ChatService(retriever, generator, Settings())
 
     first = service.respond("session-1", "How do I access my course?")
     second = service.respond("session-1", "What if it is still missing?")
@@ -66,3 +72,11 @@ def test_session_history_is_forwarded_on_follow_up() -> None:
     assert first.escalated is False
     assert second.escalated is False
     assert generator.history_lengths == [0, 2]
+    assert generator.histories[1] == [
+        {"role": "user", "content": "How do I access my course?"},
+        {"role": "assistant", "content": "Grounded answer [FAQ-01] for: How do I access my course?"},
+    ]
+    assert retriever.queries == [
+        "How do I access my course?",
+        "How do I access my course? What if it is still missing?",
+    ]

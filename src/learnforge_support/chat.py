@@ -72,7 +72,8 @@ class ChatService:
 
     def respond(self, session_id: str, message: str) -> ChatResponse:
         history = self.sessions.setdefault(session_id, [])
-        results = self.retriever.search(message, top_k=self.settings.top_k)
+        retrieval_query = self._retrieval_query(message, history)
+        results = self.retriever.search(retrieval_query, top_k=self.settings.top_k)
         top_score = results[0].relevance_score if results else 0.0
         citations = [result.chunk.document_id for result in results[:3]]
 
@@ -103,6 +104,15 @@ class ChatService:
         )
         del history[:-self.settings.max_history_messages]
         return response
+
+    @staticmethod
+    def _retrieval_query(message: str, history: list[dict[str, str]]) -> str:
+        recent_user_context = [
+            item["content"] for item in history[-6:] if item.get("role") == "user"
+        ]
+        if not recent_user_context:
+            return message
+        return " ".join([*recent_user_context, message])
 
     @staticmethod
     def _escalation(reason: str, confidence: float, citations: list[str]) -> ChatResponse:
